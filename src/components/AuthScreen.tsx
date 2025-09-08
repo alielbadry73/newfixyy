@@ -200,7 +200,6 @@ const AuthScreen = ({ onAuthSuccess, onBack }: AuthScreenProps) => {
               });
 
               onAuthSuccess(currentUserType, data.session);
-              }
             }
           } catch (signInError: any) {
             console.error('Sign in error:', signInError);
@@ -212,7 +211,8 @@ const AuthScreen = ({ onAuthSuccess, onBack }: AuthScreenProps) => {
               variant: "destructive"
             });
           }
-        } catch (error: any) {
+        }
+      } catch (error: any) {
         console.error('Auth error:', error);
         toast({
           title: "خطأ",
