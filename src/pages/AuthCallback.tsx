@@ -6,7 +6,8 @@ const AuthCallback = () => {
   const navigate = useNavigate();
 
   useEffect(() => {
-    // Handle the auth callback
+    // h
+    // andle the auth callback
     const handleAuthCallback = async () => {
       const { error } = await supabase.auth.getSession();
       

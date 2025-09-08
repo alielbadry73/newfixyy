@@ -3,21 +3,19 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Checkbox } from '@/components/ui/checkbox';
-import { Phone, Lock, User, ArrowRight, Wrench, Users } from 'lucide-react';
+import { Phone, Lock, User, ArrowRight } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 import { useToast } from '@/components/ui/use-toast';
 import { Session } from '@supabase/supabase-js';
 
 interface AuthScreenProps {
-  onAuthSuccess: (userType: 'customer' | 'staff', session: Session) => void;
+  onAuthSuccess: (userType: 'customer', session: Session) => void;
   onBack: () => void;
 }
 
 const AuthScreen = ({ onAuthSuccess, onBack }: AuthScreenProps) => {
   const [isSignUp, setIsSignUp] = useState(true);
-  const [userType, setUserType] = useState<'customer' | 'staff'>('customer');
   const [rememberPassword, setRememberPassword] = useState(false);
   const [loading, setLoading] = useState(false);
   const { toast } = useToast();
@@ -25,8 +23,7 @@ const AuthScreen = ({ onAuthSuccess, onBack }: AuthScreenProps) => {
   const [formData, setFormData] = useState({
     name: '',
     phone: '',
-    password: '',
-    serviceType: ''
+    password: ''
   });
   const [errors, setErrors] = useState<Record<string, string>>({});
 
@@ -77,87 +74,67 @@ const AuthScreen = ({ onAuthSuccess, onBack }: AuthScreenProps) => {
       newErrors.name = 'الاسم مطلوب';
     }
 
-    // Validate service type for staff sign up
-    if (isSignUp && userType === 'staff' && !formData.serviceType) {
-      newErrors.serviceType = 'نوع الخدمة مطلوب';
-    }
-
     setErrors(newErrors);
 
     if (Object.keys(newErrors).length === 0) {
       try {
         if (isSignUp) {
-          // Sign up with phone as email
-          const { data, error } = await supabase.auth.signUp({
+          // Sign up with phone as email (no email confirmation flow)
+          const { data: signUpData, error: signUpError } = await supabase.auth.signUp({
             email: `${formData.phone}@fixy.com`,
             password: formData.password,
             options: {
-              emailRedirectTo: `${window.location.origin}/auth-callback`,
               data: {
                 phone: formData.phone,
                 name: formData.name,
-                user_type: userType,
-                service_type: formData.serviceType || null,
                 created_at: new Date().toISOString()
               }
             }
           });
 
-          if (error) throw error;
+          if (signUpError) throw signUpError;
 
-          if (data.user) {
-            // Check if we have a session (auto-confirm is enabled)
-            if (data.session) {
-              // Create user profile in appropriate table
-              try {
-                if (userType === 'customer') {
-                  const { error: profileError } = await supabase
-                    .from('customers')
-                    .insert({
-                      user_id: data.user.id,
-                      name: formData.name,
-                      phone: formData.phone
-                    });
-                  if (profileError) throw profileError;
-                } else {
-                  const { error: profileError } = await supabase
-                    .from('staff')
+          // Ensure session by signing in immediately if needed
+          let session = signUpData.session || null;
+          if (!session) {
+            const { data: signInAfterData, error: signInAfterError } = await supabase.auth.signInWithPassword({
+              email: `${formData.phone}@fixy.com`,
+              password: formData.password
+            });
+            if (signInAfterError) throw signInAfterError;
+            session = signInAfterData.session;
+          }
+
+          if (signUpData.user && session) {
+            try {
+              const { error: profileError } = await supabase
+                .from('customers')
                 .insert({
-                  user_id: data.user.id,
+                  user_id: signUpData.user.id,
                   name: formData.name,
+                  phone: formData.phone
+                });
+              if (profileError) throw profileError;
+
+              if (rememberPassword) {
+                localStorage.setItem('fixy_remember_password', JSON.stringify({
                   phone: formData.phone,
-                  service_type: formData.serviceType
-                });
-                  if (profileError) throw profileError;
-                }
-
-                if (rememberPassword) {
-                  localStorage.setItem('fixy_remember_password', JSON.stringify({
-                    phone: formData.phone,
-                    password: formData.password
-                  }));
-                }
-
-                toast({
-                  title: "تم إنشاء الحساب بنجاح",
-                  description: "مرحباً بك في فيكسي!"
-                });
-
-                onAuthSuccess(userType, data.session);
-              } catch (profileError: any) {
-                console.error('Profile creation error:', profileError);
-                // We can't delete the user from client side, but we can log the issue
-                toast({
-                  title: "خطأ",
-                  description: "فشل في إنشاء الملف الشخصي",
-                  variant: "destructive"
-                });
+                  password: formData.password
+                }));
               }
-            } else {
-              // No session means email confirmation is required
+
               toast({
-                title: "تم إرسال رابط التأكيد",
-                description: "يرجى التحقق من بريدك الإلكتروني لتأكيد حسابك"
+                title: "تم إنشاء الحساب بنجاح",
+                description: "مرحباً بك في فيكسي!"
+              });
+
+              onAuthSuccess('customer', session);
+            } catch (profileError: any) {
+              console.error('Profile creation error:', profileError);
+              toast({
+                title: "خطأ",
+                description: "فشل في إنشاء الملف الشخصي",
+                variant: "destructive"
               });
             }
           }
@@ -172,19 +149,6 @@ const AuthScreen = ({ onAuthSuccess, onBack }: AuthScreenProps) => {
             if (error) throw error;
 
             if (data.session) {
-              // Determine user type by checking which table has the user
-              const { data: customerData, error: customerError } = await supabase
-                .from('customers')
-                .select('*')
-                .eq('user_id', data.user.id)
-                .single();
-
-              if (customerError && customerError.code !== 'PGRST116') { // PGRST116 is not found error
-                throw customerError;
-              }
-
-              const currentUserType = customerData ? 'customer' : 'staff';
-
               if (rememberPassword) {
                 localStorage.setItem('fixy_remember_password', JSON.stringify({
                   phone: formData.phone,
@@ -199,7 +163,7 @@ const AuthScreen = ({ onAuthSuccess, onBack }: AuthScreenProps) => {
                 description: "أهلاً بعودتك!"
               });
 
-              onAuthSuccess(currentUserType, data.session);
+              onAuthSuccess('customer', data.session);
             }
           } catch (signInError: any) {
             console.error('Sign in error:', signInError);

@@ -8,7 +8,7 @@ import CustomerApp from '@/components/CustomerApp';
 import StaffApp from '@/components/StaffApp';
 import { Session } from '@supabase/supabase-js';
 
-type AppState = 'home' | 'auth' | 'services' | 'booking' | 'success' | 'customer_app' | 'staff_app';
+type AppState = 'home' | 'auth' | 'services' | 'booking' | 'success' | 'customer_app';
 
 interface Service {
   id: string;
@@ -28,12 +28,8 @@ const Index = () => {
     setCurrentScreen('auth');
   };
 
-  const handleAuthSuccess = (userType: 'customer' | 'staff', session: Session) => {
-    if (userType === 'customer') {
-      setCurrentScreen('customer_app');
-    } else {
-      setCurrentScreen('staff_app');
-    }
+  const handleAuthSuccess = (_userType: 'customer', session: Session) => {
+    setCurrentScreen('customer_app');
   };
 
   const handleServiceSelect = (service: Service) => {
@@ -104,8 +100,7 @@ const Index = () => {
     case 'customer_app':
       return <CustomerApp session={{} as Session} />;
     
-    case 'staff_app':
-      return <StaffApp session={{} as Session} />;
+    
     
     default:
       return <HomeScreen onGetStarted={handleGetStarted} />;
